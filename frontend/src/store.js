@@ -1,7 +1,7 @@
 /** 全局状态与 API：单例 reactive store，App 挂载时 init()。 */
 import { reactive } from "vue";
 
-export const FRONTEND_VERSION = "20261005.15";
+export const FRONTEND_VERSION = "20261005.16";
 
 const state = reactive({
   view: "home",                  // home | materials | write | library | settings

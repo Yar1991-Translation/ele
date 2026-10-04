@@ -38,7 +38,7 @@ ENV_PATH = os.path.join(ROOT, ".env")
 app = Flask(__name__, static_folder=None)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0   # 本地开发工具：静态资源禁缓存，重建后刷新即生效
 
-SERVER_VERSION = "20261005.15"  # 与 gui/index.html 的 FRONTEND_VERSION 保持一致
+SERVER_VERSION = "20261005.16"  # 与 gui/index.html 的 FRONTEND_VERSION 保持一致
 
 
 @app.errorhandler(HTTPException)

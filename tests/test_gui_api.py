@@ -127,7 +127,7 @@ def test_config_schema():
     fields = config_schema.FIELDS
     paths = [f["path"] for f in fields]
     check("字段无重复", len(paths) == len(set(paths)))
-    check("字段总数 71", len(fields) == 71, str(len(fields)))
+    check("字段总数 72", len(fields) == 72, str(len(fields)))
     check("白名单由 schema 派生", set(ALLOWED_CONFIG) == set(paths))
     check("分组齐全", {g["key"] for g in config_schema.fields_json()["groups"]} ==
           {"basic", "crawl", "filter", "distill", "write", "team", "chars",
@@ -156,7 +156,7 @@ def test_api_config_schema():
     print("\n[/api/config-schema]")
     c = app.test_client()
     j = c.get("/api/config-schema").get_json()
-    check("接口可用", len(j["fields"]) == 71)
+    check("接口可用", len(j["fields"]) == 72)
     check("带分组说明", all(g.get("help") for g in j["groups"]))
     check("带 .env 字段说明", len(j["env"]) == 7)
 

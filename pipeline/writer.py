@@ -21,7 +21,7 @@ import os
 import re
 from datetime import datetime
 
-from llm.client import LLMClient, llm_for
+from llm.client import LLMClient, llm_for, extract_json
 from llm.prompts import load_prompt, load_style_skill
 from pipeline import lore
 from pipeline.ask_user import AskSession
@@ -355,8 +355,12 @@ def _weight_note(official_weight):
 
 
 def _build_dual_personas(sel_off, sel_dis, ctx_by_mention, level_by_name,
-                         source_mode, official_weight):
-    """按来源与权重组装人物卡文本。返回 (personas_text, info_line)。"""
+                         source_mode, official_weight, full_levels=None):
+    """按来源与权重组装人物卡文本。返回 (personas_text, info_line)。
+
+    full_levels 非空时（设计阶段轻量提示词）：只有该档位的人物卡保留全文，
+    其余只列一行名单（标注可用查询工具按需读取）。
+    """
     w, d, tone = _weight_note(official_weight)
     sections = []
     if sel_off:
@@ -374,7 +378,18 @@ def _build_dual_personas(sel_off, sel_dis, ctx_by_mention, level_by_name,
                      "两层冲突时：塑造以权重高者为主导，另一层仅校正事实。")
     for weight, title, rule, lst in sections:
         parts.append(f"【{title}】（权重 {weight}%）{rule}")
-        parts += [_block_for(p, ctx_by_mention, level_by_name) for p in lst]
+        if full_levels is None:
+            parts += [_block_for(p, ctx_by_mention, level_by_name) for p in lst]
+        else:
+            full = [p for p in lst
+                    if (level_by_name.get(p["name"]) or "配角") in full_levels]
+            slim = [p for p in lst if p not in full]
+            parts += [_block_for(p, ctx_by_mention, level_by_name) for p in full]
+            if slim:
+                parts.append("（以下人物此处只列名单，完整人物卡可用查询工具按需读取："
+                             + "、".join("{}〔{}〕".format(
+                                 p["name"], level_by_name.get(p["name"]) or "配角")
+                                 for p in slim) + "）")
     info = "、".join(f"{t}×{len(l)}" for _, t, _, l in sections) or "无"
     return "\n\n".join(parts), info
 
@@ -413,6 +428,32 @@ def _load_knowledge(category, limit):
                 text = text[:limit] + "\n<!-- （超长截断） -->"
             parts.append(f"=== {cat} · {fname[:-3]} ===\n{text}")
     return "\n\n".join(parts), source
+
+
+def _knowledge_files_for_tool(category):
+    """设计阶段查询工具用的知识库文件清单 [(显示名, 路径)]。
+
+    复用 _load_knowledge 的回退链（精确分类 -> 同类型 -> 全部）——
+    模型通过查询工具读到的，就是原本会整段塞进提示词的那几份文件。
+    """
+    root = storage.KNOWLEDGE_DIR
+    cats = sorted(d for d in os.listdir(root)
+                  if os.path.isdir(os.path.join(root, d))) if os.path.isdir(root) else []
+    if not cats:
+        return []
+    if category in cats:
+        chosen = [category]
+    else:
+        same_type = [c for c in cats if c == category.split("·")[0] or
+                     c.startswith(category.split("·")[0] + "·")]
+        chosen = same_type or cats
+    out = []
+    for cat in chosen:
+        for key, fname in KNOWLEDGE_FILES.items():
+            path = os.path.join(storage.knowledge_dir(cat), fname)
+            if os.path.exists(path):
+                out.append((f"{cat}·{fname[:-3]}", path))
+    return out
 
 
 def _sanitize_filename(s):
@@ -721,13 +762,15 @@ def _team_polish(idea, draft, cfg, llm, article_type, cp_combo, ending,
     return path
 
 
-def _gen_chapter_text(llm_client, system, user, temperature, query_rounds=0,
-                      char_limit=4000, entries=None, files=None):
-    """逐章生成：支持动笔前「备料」查询（设定/剧情文件与人物卡全文）。
+def _chat_with_materials(llm_client, system, user, temperature, query_rounds=0,
+                         char_limit=4000, entries=None, files=None,
+                         knowledge_files=None, deliverable="本章正文"):
+    """通用「备料查询」多轮循环：模型可先按需读取素材再产出。
 
     模型输出 JSON {"queries": [...]} 视为查询请求（见 lore.parse_queries），
-    回填结果后继续；输出正文则直接返回。查询轮次用尽后强制其落笔，
+    回填结果后继续；输出最终产物则直接返回。查询轮次用尽后强制其落笔，
     极端情况下（轮尽仍查询）再兜底一轮，整体有界。
+    deliverable 描述最终产物（"本章正文"/"骨架 JSON"/"大纲 JSON"）。
     """
     messages = [{"role": "system", "content": system},
                 {"role": "user", "content": user}]
@@ -737,36 +780,73 @@ def _gen_chapter_text(llm_client, system, user, temperature, query_rounds=0,
         if not queries:
             return resp
         result = lore.run_queries(queries, char_limit=char_limit,
-                                  entries=entries, files=files)
+                                  entries=entries, files=files,
+                                  knowledge_files=knowledge_files)
         messages.append({"role": "assistant", "content": resp})
         left = query_rounds - round_no - 1
         if left <= 0:
             messages.append({"role": "user", "content":
                              "查询机会已用完。以下是最后一批查询结果：\n\n"
                              + (result or "（没有查到内容）")
-                             + "\n\n请立即输出本章正文，不要再输出查询 JSON。"})
+                             + f"\n\n请立即输出{deliverable}，不要再输出查询 JSON。"})
         elif result:
             print("  备料查询 {} 条，已回填（还剩 {} 轮）".format(len(queries), left))
             messages.append({"role": "user", "content": "查询结果：\n\n" + result
-                             + "\n\n现在继续：资料够就直接输出本章正文；"
+                             + f"\n\n现在继续：资料够就直接输出{deliverable}；"
                                "还需要查别的可再输出查询 JSON。"})
         else:
             print("  查询没有命中可用资料（还剩 {} 轮）".format(left))
             messages.append({"role": "user", "content":
                              "这些查询没有查到内容（名字要与索引一致）。"
-                             "请直接输出本章正文，或换准确的名字再查一次。"})
+                             f"请直接输出{deliverable}，或换准确的名字再查一次。"})
     resp = llm_client.chat_messages(messages, temperature=temperature).strip()
     queries = lore.parse_queries(resp)
     if queries:   # 轮尽仍在查询：兜底一轮，整体有界
         result = lore.run_queries(queries, char_limit=char_limit,
-                                  entries=entries, files=files)
+                                  entries=entries, files=files,
+                                  knowledge_files=knowledge_files)
         resp = llm_client.chat_messages(
             messages + [{"role": "assistant", "content": resp},
                         {"role": "user", "content":
                          "查询结果：\n\n" + (result or "（没有查到内容）")
-                         + "\n\n这是最后一次交互，现在必须直接输出本章正文。"}],
+                         + f"\n\n这是最后一次交互，现在必须直接输出{deliverable}。"}],
             temperature=temperature).strip()
     return resp
+
+
+def _gen_chapter_text(llm_client, system, user, temperature, query_rounds=0,
+                      char_limit=4000, entries=None, files=None):
+    """逐章生成：支持动笔前「备料」查询（设定/剧情文件与人物卡全文）。"""
+    return _chat_with_materials(llm_client, system, user, temperature,
+                                query_rounds=query_rounds, char_limit=char_limit,
+                                entries=entries, files=files,
+                                deliverable="本章正文")
+
+
+def _slim_knowledge_note(knowledge, knowledge_files):
+    """设计阶段轻量提示词：知识库不整段注入，给一行可查文件索引。"""
+    if not knowledge_files:
+        return knowledge
+    return ("（知识库未整段注入——用查询工具按需读取，type=「知识库」。可查文件："
+            + "、".join(d for d, _ in knowledge_files) + "）")
+
+
+def _design_json(llm, user, temperature, query_rounds, char_limit,
+                 entries, files, knowledge_files, kind):
+    """设计阶段调用：备料查询循环 + JSON 解析（解析失败自纠一次）。"""
+    text = _chat_with_materials(
+        llm, system="你是资深同人作者兼策划。只输出 JSON。", user=user,
+        temperature=temperature, query_rounds=query_rounds, char_limit=char_limit,
+        entries=entries, files=files, knowledge_files=knowledge_files,
+        deliverable=kind + " JSON")
+    try:
+        return extract_json(text)
+    except Exception:
+        fix = ("你上一次的输出无法被解析为 JSON。请严格只输出一个合法的 JSON 对象，"
+               "不要输出任何解释、markdown 代码块标记或其他文字。\n\n你上一次的输出：\n"
+               + text[:4000])
+        return extract_json(llm.chat(system="你是资深同人作者兼策划。只输出 JSON。",
+                                     user=fix, temperature=0.2, retries=1))
 
 
 def write_article(idea, cfg, llm=None, article_type=None, cp_combo=None, ending=None,
@@ -802,6 +882,12 @@ def write_article(idea, cfg, llm=None, article_type=None, cp_combo=None, ending=
     if mode != "auto" and not (draft or "").strip():
         raise SystemExit("「{}」方式需要原稿：CLI 用 --file/--draft，GUI 粘贴到原稿框".format(MODES[mode]))
 
+    # ---- 设计阶段查询配置（骨架/大纲轻量提示词 + 章节备料共用）----
+    query_rounds = max(0, int(wcfg.get("query_rounds", 2) or 0)) \
+        if wcfg.get("query_tools", True) else 0
+    query_char_limit = int(wcfg.get("query_char_limit", 4000) or 4000)
+    design_queries = bool(wcfg.get("query_design", True)) and query_rounds > 0
+
     # 人物卡：双池（官方/手写 + 蒸馏）+ @ 点名 + 来源与权重
     all_official = _all_personas(wcfg)
     all_distilled = _load_distilled_cards(wcfg)
@@ -814,7 +900,8 @@ def write_article(idea, cfg, llm=None, article_type=None, cp_combo=None, ending=
     level_by_name = {m["name"]: m["level"] for m in mentions if m["level"]}
     personas_text, persona_info = _build_dual_personas(
         sel_off, sel_dis, _mention_contexts(mentions, idea, draft),
-        level_by_name, source_mode, official_weight)
+        level_by_name, source_mode, official_weight,
+        full_levels=("主役", "重要") if design_queries else None)
     if gti_only:
         roster = _roster_note(all_official)
         if roster:
@@ -883,9 +970,6 @@ def write_article(idea, cfg, llm=None, article_type=None, cp_combo=None, ending=
         print("模型分配：" + "｜".join("{} {}".format(k, v) for k, v in assigned.items()))
 
     # ---- 章节查询工具：动笔前可查阅 data/lore/ 设定剧情文件与人物卡全文 ----
-    query_rounds = max(0, int(wcfg.get("query_rounds", 2) or 0)) \
-        if wcfg.get("query_tools", True) else 0
-    query_char_limit = int(wcfg.get("query_char_limit", 4000) or 4000)
     lore_entries = lore.persona_entries() if query_rounds > 0 else []
     lore_filelist = lore.lore_files() if query_rounds > 0 else []
     lore_tools = lore.tool_instructions(
@@ -894,6 +978,18 @@ def write_article(idea, cfg, llm=None, article_type=None, cp_combo=None, ending=
     if lore_tools:
         print("查询工具：已启用（写作时可查阅设定/剧情文件与人物卡，最多 {} 轮）"
               .format(query_rounds))
+    # ---- 设计阶段素材阅读工具：骨架/大纲不整段注入知识库与配角卡，按需查询 ----
+    knowledge_files = _knowledge_files_for_tool(category) if design_queries else []
+    if design_queries:
+        idx = lore.build_index(lore_entries, lore_filelist)
+        if knowledge_files:
+            idx = ((idx + "\n") if idx else "") + \
+                "- 知识库文件：" + "、".join(d for d, _ in knowledge_files)
+        design_tools = lore.tool_instructions(idx, query_rounds)
+        print("设计阶段素材工具：已启用（骨架/大纲按需读取知识库与人物卡，"
+              "提示词不整段注入）")
+    else:
+        design_tools = ""
 
     # 想法 -> 需求清单：全文的兑现契约（骨架覆盖、大纲分配到章、逐章落实、成文验收）
     req_items = _extract_requirements(outline_llm, idea, article_type,
@@ -928,17 +1024,20 @@ def write_article(idea, cfg, llm=None, article_type=None, cp_combo=None, ending=
     spine_user = load_prompt(
         "write_spine",
         idea=idea or "（无）", length=str(length),
-        knowledge=knowledge, knowledge_source=knowledge_source,
+        knowledge=_slim_knowledge_note(knowledge, knowledge_files)
+        if design_queries else knowledge,
+        knowledge_source=knowledge_source,
         target_type=article_type, cp_combo=cp_combo, ending_text=ending_text,
         type_hint=RULE_HINTS[article_type], personas=personas_text,
         requirements=req_text,
         rating_note=rating_note,
+        lore_tools=design_tools,
         draft=(draft[:DRAFT_INPUT_LIMIT] if mode == "expand" else "（无原稿）"),
     )
-    spine = outline_llm.chat_json(
-        system="你是资深同人作者兼策划。只输出 JSON。",
-        user=spine_user, temperature=temperature,
-    )
+    spine = _design_json(outline_llm, spine_user, temperature,
+                         query_rounds if design_queries else 0, query_char_limit,
+                         lore_entries, lore_filelist,
+                         knowledge_files if design_queries else None, "骨架")
     if not isinstance(spine, dict):
         raise SystemExit("故事骨架生成结果不是 JSON 对象："
                          + json.dumps(spine, ensure_ascii=False)[:300])
@@ -948,16 +1047,19 @@ def write_article(idea, cfg, llm=None, article_type=None, cp_combo=None, ending=
         str(spine.get("core_conflict") or "")[:40], len(key_scenes)))
 
     print("第 2/3 步：生成分章大纲（目标 {} 字，约 {} 章）...".format(length, n_chapters))
+    outline_knowledge = _slim_knowledge_note(knowledge, knowledge_files) \
+        if design_queries else knowledge
     if mode == "expand":
         outline_user = load_prompt(
             "write_expand_outline",
             idea=idea or "（无补充要求）", length=str(length), n_chapters=str(n_chapters),
-            chapter_chars=str(chapter_chars), knowledge=knowledge,
+            chapter_chars=str(chapter_chars), knowledge=outline_knowledge,
             knowledge_source=knowledge_source,
             target_type=article_type, cp_combo=cp_combo, ending_text=ending_text,
             type_hint=RULE_HINTS[article_type], personas=personas_text,
             requirements=req_text,
             rating_note=rating_note,
+            lore_tools=design_tools,
             spine=spine_text,
             draft=draft[:DRAFT_INPUT_LIMIT],
         )
@@ -965,17 +1067,18 @@ def write_article(idea, cfg, llm=None, article_type=None, cp_combo=None, ending=
         outline_user = load_prompt(
             "write_outline",
             idea=idea, length=str(length), n_chapters=str(n_chapters),
-            chapter_chars=str(chapter_chars), knowledge=knowledge,
+            chapter_chars=str(chapter_chars), knowledge=outline_knowledge,
             knowledge_source=knowledge_source, spine=spine_text,
             target_type=article_type, cp_combo=cp_combo, ending_text=ending_text,
             type_hint=RULE_HINTS[article_type], personas=personas_text,
             requirements=req_text,
             rating_note=rating_note,
+            lore_tools=design_tools,
         )
-    outline = outline_llm.chat_json(
-        system="你是资深同人作者兼策划。只输出 JSON。",
-        user=outline_user, temperature=temperature,
-    )
+    outline = _design_json(outline_llm, outline_user, temperature,
+                           query_rounds if design_queries else 0, query_char_limit,
+                           lore_entries, lore_filelist,
+                           knowledge_files if design_queries else None, "大纲")
     title = str(outline.get("title") or "未命名").strip()
     chapters_spec = outline.get("chapters") or []
     if not chapters_spec:

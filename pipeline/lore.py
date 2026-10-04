@@ -178,17 +178,44 @@ def parse_queries(text):
     return None
 
 
-def run_queries(queries, char_limit=4000, entries=None, files=None):
-    """执行一批查询，返回回填给模型的文本（每条一个来源块）。"""
+def run_queries(queries, char_limit=4000, entries=None, files=None,
+                knowledge_files=None):
+    """执行一批查询，返回回填给模型的文本（每条一个来源块）。
+
+    knowledge_files: [(显示名, 路径)]——知识库文件（骨架/大纲设计阶段的可读素材），
+    查询类型「知识库」按显示名匹配（带不带 .md 都认）。
+    """
     entries = persona_entries() if entries is None else entries
     files = lore_files() if files is None else files
+    kmap = {}
+    for display, path in (knowledge_files or []):
+        kmap[display.lower()] = (display, path)
+        kmap[os.path.splitext(display)[0].lower()] = (display, path)
+        tail = os.path.splitext(display)[0].split("·")[-1].strip().lower()
+        if tail:
+            kmap.setdefault(tail, (display, path))   # 「文风」可命中「分类·文风」
     blocks = []
     for q in (queries or [])[:6]:
         qtype = str(q.get("type") or "").strip()
         name = str(q.get("name") or "").strip()
         if not name:
             continue
-        if ("设" in qtype or "剧情" in qtype or "world" in qtype.lower()
+        if "知识" in qtype or qtype.lower() in ("knowledge", "kb"):
+            hit = kmap.get(name.lower()) or kmap.get(
+                os.path.splitext(name)[0].lower())
+            if hit is None:
+                avail = "、".join(sorted({d for d, _ in (knowledge_files or [])})) \
+                        or "（暂无知识库文件）"
+                blocks.append(f"【知识库/{name}】未找到。可用文件：{avail}")
+            else:
+                display, path = hit
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        text = f.read()
+                except OSError:
+                    text = ""
+                blocks.append(f"【知识库/{display}】\n{text[:char_limit]}")
+        elif ("设" in qtype or "剧情" in qtype or "world" in qtype.lower()
                 or qtype.lower() in ("lore", "file")):
             text = lore_read(name)
             if text is None:

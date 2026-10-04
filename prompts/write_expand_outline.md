@@ -35,5 +35,7 @@ $requirements
 作者原稿：
 $draft
 
+$lore_tools
+
 素材知识库：
 $knowledge

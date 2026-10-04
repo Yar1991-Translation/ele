@@ -25,6 +25,27 @@ from spider import storage                         # noqa: E402
 from llm.prompts import load_prompt                # noqa: E402
 
 
+def _spine_obj():
+    return {"premise": "失忆开篇，死亡收尾", "core_conflict": "他必须想起来",
+            "start_state": "失忆", "end_state": "死亡",
+            "key_scenes": [{"name": "醒来", "who": "回响、蜂医", "where": "医疗舱",
+                            "what": "他不记得自己是谁", "why_key": "开篇"}]}
+
+
+def _outline_obj():
+    return {"title": "测试文章", "premise": "一段话",
+            "chapters": [{"title": "第一章", "summary": "醒来",
+                          "beats": ["他醒来"], "covers": [1, 3],
+                          "scenes": [{"place": "医疗舱", "time": "清晨",
+                                      "people": "回响", "event": "睁眼"}],
+                          "tropes_used": []},
+                         {"title": "第二章", "summary": "死去",
+                          "beats": ["他死去"], "covers": [2],
+                          "scenes": [{"place": "水下", "time": "夜里",
+                                      "people": "回响", "event": "沉下去"}],
+                          "tropes_used": []}]}
+
+
 class FakeLLM:
     """按提示词内容分发假结果；记录调用顺序供断言。"""
     model = "fake"
@@ -46,6 +67,11 @@ class FakeLLM:
             return "【末章统筹版】\n\n" + "他关掉手电，回身看了一眼。" * 20
         if "修订后的本章全文" in system:
             return "【修订版】\n\n" + "他把耳机塞回耳朵。" * 20
+        # 设计阶段走多轮循环后由 chat 落地：骨架/大纲 JSON（与 chat_json 同一套分发）
+        if "只输出 JSON" in system and '"chapters"' in user:
+            return json.dumps(_outline_obj(), ensure_ascii=False)
+        if "只输出 JSON" in system and '"key_scenes"' in user:
+            return json.dumps(_spine_obj(), ensure_ascii=False)
         return "【正文】\n\n" + "他站起来，推开门。" * 30
 
     def chat_json(self, system, user, **kw):
@@ -69,22 +95,9 @@ class FakeLLM:
             ], "summary": "整体符合想法"}
         # 先判大纲：大纲提示词里嵌着骨架 JSON，含 "key_scenes"，不能误判成骨架
         if '"chapters"' in user:
-            return {"title": "测试文章", "premise": "一段话",
-                    "chapters": [{"title": "第一章", "summary": "醒来",
-                                  "beats": ["他醒来"], "covers": [1, 3],
-                                  "scenes": [{"place": "医疗舱", "time": "清晨",
-                                              "people": "回响", "event": "睁眼"}],
-                                  "tropes_used": []},
-                                 {"title": "第二章", "summary": "死去",
-                                  "beats": ["他死去"], "covers": [2],
-                                  "scenes": [{"place": "水下", "time": "夜里",
-                                              "people": "回响", "event": "沉下去"}],
-                                  "tropes_used": []}]}
+            return _outline_obj()
         if '"key_scenes"' in user:
-            return {"premise": "失忆开篇，死亡收尾", "core_conflict": "他必须想起来",
-                    "start_state": "失忆", "end_state": "死亡",
-                    "key_scenes": [{"name": "醒来", "who": "回响、蜂医", "where": "医疗舱",
-                                    "what": "他不记得自己是谁", "why_key": "开篇"}]}
+            return _spine_obj()
         if "连续性事实" in user:
             return {"facts": ["回响在医疗舱醒来时失去了记忆"]}
         if "实际结局走向" in user:
@@ -136,7 +149,7 @@ def test_full_flow():
     assert "想法兑现：3/3" in out, "想法校验没跑完：\n" + out
     assert "章节安排" in out, "大纲没有打进日志：\n" + out
     kinds = [k for k, _ in fake.calls]
-    assert kinds.count("chat") == 2 * 2 + 1, "调用次数不对：{}".format(kinds)
+    assert kinds.count("chat") == 2 * 2 + 1 + 2, "调用次数不对（含骨架/大纲各1次设计调用）：{}".format(kinds)
     print("test_full_flow OK")
     print("  文件：", os.path.basename(path))
     print("  日志片段：", " | ".join(l for l in out.splitlines() if "进度" in l or "校验" in l))
@@ -180,7 +193,7 @@ def test_short_chapter_retry():
     text = open(path, encoding="utf-8").read()
     assert "过短" in out and "重写后约" in out, "没走重写分支：\n" + out
     kinds = [k for k, _ in fake.calls]
-    assert kinds.count("chat") == 4, "两章各写一次+返工一次：{}".format(kinds)
+    assert kinds.count("chat") == 4 + 2, "两章各写一次+返工一次+设计2次：{}".format(kinds)
     assert "太短" not in text, "返工成功后不该留着过短版"
     assert "【正文】" in text
     assert "想法兑现清单" in text
@@ -222,7 +235,7 @@ def test_ask_flow():
     assert "（你的回答" not in text.replace("（你的回答）", ""), "auto 模式不该冒充用户回答"
     assert "自动应答" in out, "auto 模式日志要说明是自动应答：\n" + out
     kinds = [k for k, _ in fake.calls]
-    assert kinds.count("chat") == 2, "两章正文，没有别的 chat：{}".format(kinds)
+    assert kinds.count("chat") == 2 + 2, "两章正文 + 设计 2 次：{}".format(kinds)
     print("test_ask_flow OK")
 
 
@@ -314,7 +327,7 @@ def test_query_tool_loop():
     assert "查询工具：已启用" in out, "查询工具没启用：\n" + out
     assert "备料查询 1 条" in out, "查询循环没跑：\n" + out
     kinds = [k for k, _ in fake.calls]
-    assert kinds.count("chat") == 2 * 2, "每章 1 次查询 + 1 次落笔：{}".format(kinds)
+    assert kinds.count("chat") == 2 * 2 + 2, "每章 1 查询 1 落笔 + 设计 2 次：{}".format(kinds)
     assert "【正文】" in text
     print("test_query_tool_loop OK")
 
@@ -448,6 +461,69 @@ def test_rating_override():
     print("test_rating_override OK")
 
 
+class DesignLLM(FakeLLM):
+    """设计阶段先查一次知识库再出设计——测骨架/大纲的素材阅读工具。"""
+
+    def chat_messages(self, messages, **kw):
+        sys_txt = messages[0]["content"]
+        last = messages[-1]["content"]
+        if "资深同人作者兼策划" in sys_txt:
+            full = "\n".join(m["content"] for m in messages)
+            self.users.append(last)
+            if "查询结果" not in last and "查询机会已用完" not in last:
+                self.calls.append(("chat", "design-query"))
+                return '{"queries": [{"type": "知识库", "name": "文风"}]}'
+            self.calls.append(("chat", "outline" if '"chapters"' in full else "spine"))
+            return json.dumps(_outline_obj() if '"chapters"' in full else _spine_obj(),
+                              ensure_ascii=False)
+        return super().chat_messages(messages, **kw)
+
+
+def test_design_queries():
+    _prepare_sandbox()
+    with open(os.path.join(storage.PERSONAS_DIR, "红狼.md"), "w", encoding="utf-8") as f:
+        f.write("# 红狼\n\n队长，简短行动派。")
+    base = {"length": 400, "chapter_chars": 200, "self_revise": False,
+            "final_pass": False, "ending_check": False,
+            "use_personas": True, "persona_char_limit": 4000,
+            "query_tools": True, "query_rounds": 2}
+    buf = io.StringIO()
+
+    # 开：骨架/大纲走查询循环，提示词不含知识库全文，配角卡只留名单
+    fake = DesignLLM()
+    cfg = {"write": {**base, "query_design": True}, "models": {}}
+    with contextlib.redirect_stdout(buf):
+        path = write_article("@回响:主役 @红狼:配角", cfg, llm=fake,
+                             article_type="单人向", cp_combo="微量", ending="不限")
+    spine_users = [u for u in fake.users if '"key_scenes"' in u
+                   and "查询结果" not in u and "查询机会" not in u]
+    assert spine_users, "没捕获到骨架提示词"
+    assert "知识库未整段注入" in spine_users[0], "骨架提示词应使用轻量知识库索引"
+    assert "单人向·微量·文风" in spine_users[0], "索引应列出可查知识库文件"
+    assert "=== 单人向·微量 · 文风 ===" not in spine_users[0],         "知识库全文不应再整段注入（注入头是整段注入特有的）"
+    assert "红狼〔配角〕" in spine_users[0], "配角卡应瘦身为名单"
+    assert "队长，简短行动派" not in spine_users[0], "配角卡全文不应注入"
+    assert "前潜艇声呐兵" in spine_users[0], "主役卡应保留全文"
+    result_users = [u for u in fake.users if u.startswith("查询结果")]
+    assert any("【知识库/" in u and "短句为主" in u for u in result_users), \
+        "知识库查询结果应回填给模型"
+    assert os.path.exists(path)
+    kinds = [k for k, _ in fake.calls]
+    assert [lbl for _, lbl in fake.calls].count("design-query") == 2, "骨架+大纲各一轮备料查询：" + str(fake.calls)
+
+    # 关：行为回到现状（知识库全文在场，无备料查询）
+    fake2 = FakeLLM()
+    cfg2 = {"write": {**base, "query_design": False}, "models": {}}
+    with contextlib.redirect_stdout(buf):
+        write_article("@回响:主役 @红狼:配角", cfg2, llm=fake2,
+                      article_type="单人向", cp_combo="微量", ending="不限")
+    spine2 = [u for u in fake2.users if '"key_scenes"' in u]
+    assert spine2 and "短句为主" in spine2[0], "关闭后知识库应整段注入"
+    assert all("知识库未整段注入" not in u for u in fake2.users)
+    assert not any(lbl == "design-query" for _, lbl in fake2.calls)
+    print("test_design_queries OK")
+
+
 def test_writer_helpers():
     from pipeline.writer import _cap_bible, _ending_window, _story_map
 
@@ -477,13 +553,15 @@ def test_prompt_templates():
                 lore_tools="查询工具说明",
                 **common)
     load_prompt("write_spine", length="8000", draft="（无原稿）",
-                knowledge_source="来源",
+                knowledge_source="来源", lore_tools="素材索引",
                 **{k: v for k, v in common.items() if k not in ("title", "plot_anchor",
                                                                 "chapter_json", "bible")})
     load_prompt("write_outline", length="8000", n_chapters="4", chapter_chars="2000",
-                spine="骨架", story_map="安排", knowledge_source="来源", **common)
+                spine="骨架", story_map="安排", knowledge_source="来源",
+                lore_tools="素材索引", **common)
     load_prompt("write_expand_outline", length="8000", n_chapters="4", chapter_chars="2000",
-                spine="骨架", draft="原稿", knowledge_source="来源", **common)
+                spine="骨架", draft="原稿", knowledge_source="来源",
+                lore_tools="素材索引", **common)
     load_prompt("final_pass", total_chapters="2", chapter_text="末章",
                 story_so_far="脉络", **common)
     load_prompt("ending_fix", verdict_note="审稿意见", chapter_text="末章",
@@ -570,6 +648,7 @@ if __name__ == "__main__":
         test_quality_clauses()
         test_rating_flow()
         test_rating_override()
+        test_design_queries()
         test_ask_flow()
         test_ask_file_mode()
         test_ask_timeout()

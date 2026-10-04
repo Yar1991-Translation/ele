@@ -32,6 +32,8 @@ $requirements
 知识库来源：$knowledge_source
 内容分级（硬性内容边界）：$rating_note
 
+$lore_tools
+
 素材知识库：
 $knowledge
 
