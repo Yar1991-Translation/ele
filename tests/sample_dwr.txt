@@ -1,0 +1,29 @@
+//#DWR-INSERT
+var s0={};var s1={};var s2={};var s3={};var s4={};var s5={};
+//#DWR-REPLY
+s0.succeed=true;
+s0.count=3;
+s0.posts=[s1,s2,s5];
+s1.blogPageUrl="https://someone.lofter.com/post/1e5f3a_1234567";
+s1.title="\u6df1\u591c\u6807\u9898";
+s1.blogInfo=s3;
+s1.publishTime=1726900000000;
+s1.hot=88;
+s1.tag="\u539f\u4f5c,\u540c\u4eba\u6587";
+s1.content="<p>hello \u4e16\u754c \"quote\" ;</p><p>second \ud83d\ude00 line</p><p>\u7ed3\u5c3e\u4e00\u53e5\u8bdd\u589e\u52a0\u957f\u5ea6 \u547c\u5438</p>";
+s2.blogPageUrl="https://writer.lofter.com/post/2b6c4d_7654321";
+s2.title="\u957f\u6587";
+s2.blogNickName="\u957f\u6587\u4f5c\u8005";
+s2.publishTime=1726800000000;
+s2.hot=12;
+s2.tag="\u539f\u4f5c";
+s2.compositeContent="<div>\u957f\u6587\u7b2c\u4e00\u7ae0 \u5185\u5bb9\u5f00\u59cb</div><div>\u7b2c\u4e8c\u6bb5\u5185\u5bb9</div>";
+s3.blogNickName="\u67d0\u67d0\u67d0";
+s3.blogPageUrl="https://someone.lofter.com/";
+s5.blogPageUrl="https://pic.lofter.com/post/3c7d5e_1112223";
+s5.blogNickName="\u56fe\u4f5c\u8005";
+s5.publishTime=1726700000000;
+s5.hot=1;
+s5.tag="\u56fe";
+s5.content="\u914d\u56fe\u4e00\u5f20";
+s5.originPhotoLinks="[{\"raw\":\"https://imglf1.lf127.net/img/abc.jpg?imageView&thumbnail=500\"}]";

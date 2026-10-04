@@ -1,0 +1,17 @@
+# 本地配置与密钥，绝不提交
+.env
+config.yaml
+
+# 爬取与生成的数据
+data/
+frontend/node_modules/
+gui/dist/
+
+# 本地工具
+.zcode/
+
+# 参考
+reference/
+
+__pycache__/
+*.pyc

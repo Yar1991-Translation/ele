@@ -1,0 +1,184 @@
+/* ============================================================
+   蒸馏工坊 · 设计令牌
+   浅色为主，深色用 html[data-theme="dark"] 整套覆盖。
+   新样式只用这里的变量，不要再写死颜色/像素间距。
+   ============================================================ */
+:root{
+  /* --- 表面（由浅到深的层级） --- */
+  --bg:#f5f6f8;            /* 页面底 */
+  --surface:#ffffff;       /* 卡片/面板 */
+  --sunken:#eceff4;        /* 凹陷：输入框、代码、日志 */
+  --raised:#ffffff;        /* 浮层：下拉、弹窗 */
+  --hover:#f2f4f7;
+
+  /* --- 文字 --- */
+  --ink:#1a1d21;
+  --ink2:#5b6472;
+  --ink3:#8b95a3;
+
+  /* --- 描边 --- */
+  --line:#e4e8ee;
+  --line2:#cdd4de;
+
+  /* --- 强调（蒸馏身份的琥珀） --- */
+  --accent:#c2761f;
+  --accent-deep:#a25e12;
+  --accent-soft:rgba(194,118,31,.12);
+  --on-accent:#ffffff;
+
+  /* --- 语义 --- */
+  --red:#c0453c;
+  --red-soft:rgba(192,69,60,.12);
+  --green:#2f8f5b;
+  --green-soft:rgba(47,143,91,.12);
+  --blue:#3b6fd4;
+  --blue-soft:rgba(59,111,212,.12);
+  --warn:#b8860b;
+
+  /* --- 控件专用（深浅色各自调） --- */
+  --field-bg:#ffffff;
+  --field-border:var(--line2);
+  --console-bg:#20242b;
+  --console-ink:#d6dae1;
+  --console-dim:#7e8794;
+  --console-mark:#d9a05b;
+  --console-warn:#e08a80;
+
+  /* --- 间距刻度 --- */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  --sp-5:24px; --sp-6:32px; --sp-7:48px; --sp-8:64px;
+
+  /* --- 字号刻度 --- */
+  --fs-xs:11px; --fs-sm:12.5px; --fs-base:14px;
+  --fs-md:16px; --fs-lg:20px; --fs-xl:24px; --fs-2xl:30px;
+
+  /* --- 字体 --- */
+  --ui:"Segoe UI","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+  --serif:"Noto Serif SC","Source Han Serif SC","STSong","SimSun",serif;
+  --mono:"Cascadia Mono",Consolas,"Courier New",monospace;
+
+  /* --- 形 --- */
+  --r-sm:6px; --r-md:9px; --r-lg:13px; --r-full:999px;
+  --shadow-sm:0 1px 2px rgba(16,20,28,.06);
+  --shadow:0 1px 2px rgba(16,20,28,.05), 0 3px 12px rgba(16,20,28,.05);
+  --shadow-lg:0 8px 32px rgba(16,20,28,.14);
+  --focus-ring:0 0 0 3px rgba(194,118,31,.28);
+
+  /* --- 层级 --- */
+  --z-sticky:10; --z-dropdown:20; --z-overlay:30;
+  --z-dialog:40; --z-toast:50;
+
+  /* --- 动效 --- */
+  --dur-fast:.13s; --dur-med:.22s; --dur-slow:.4s;
+  --ease:cubic-bezier(.4,0,.2,1);
+}
+
+html[data-theme="dark"]{
+  --bg:#14171c;
+  --surface:#1b1f26;
+  --sunken:#222730;
+  --raised:#252b35;
+  --hover:#262c36;
+
+  --ink:#e7eaef;
+  --ink2:#a3adbb;
+  --ink3:#6f7a89;
+
+  --line:#2b313b;
+  --line2:#3a424e;
+
+  --accent:#e0913c;
+  --accent-deep:#f0a95a;
+  --accent-soft:rgba(224,145,60,.16);
+  --on-accent:#1a1206;
+
+  --red:#e2705f;
+  --red-soft:rgba(226,112,95,.16);
+  --green:#4cb47a;
+  --green-soft:rgba(76,180,122,.16);
+  --blue:#6c9bf0;
+  --blue-soft:rgba(108,155,240,.16);
+
+  --field-bg:#20252d;
+  --field-border:#3a424e;
+  --console-bg:#12151a;
+  --console-ink:#cfd6df;
+  --console-dim:#69737f;
+  --console-mark:#d9a05b;
+  --console-warn:#e08a80;
+
+  --shadow-sm:0 1px 2px rgba(0,0,0,.3);
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 3px 12px rgba(0,0,0,.24);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.5);
+  --focus-ring:0 0 0 3px rgba(224,145,60,.34);
+}
+
+/* ============================================================
+   基础
+   ============================================================ */
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:var(--fs-base)/1.65 var(--ui);
+  -webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:none;padding:0}
+input,textarea,select{font:inherit;color:var(--ink);background:var(--field-bg);
+  border:1px solid var(--field-border);border-radius:var(--r-md);
+  padding:7px 10px;width:100%;transition:border-color var(--dur-fast),box-shadow var(--dur-fast)}
+input:focus,textarea:focus,select:focus,
+button:focus-visible,a:focus-visible,select:focus-visible{
+  outline:none;border-color:var(--accent);box-shadow:var(--focus-ring)}
+input:disabled,textarea:disabled,select:disabled{opacity:.55;cursor:not-allowed}
+::placeholder{color:var(--ink3)}
+a{color:var(--accent-deep);text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3,h4{margin:0;font-family:var(--serif);letter-spacing:.3px}
+p{margin:0}
+table{border-collapse:collapse}
+
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:5px;border:2px solid var(--bg)}
+::-webkit-scrollbar-thumb:hover{background:var(--ink3)}
+
+/* ============================================================
+   通用组件（旧页面在用，改版时逐步替换为 ui/ 组件）
+   ============================================================ */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  background:var(--surface);border:1px solid var(--line2);border-radius:var(--r-md);
+  padding:8px 16px;font-size:var(--fs-base);white-space:nowrap;
+  transition:border-color var(--dur-fast),background var(--dur-fast),
+             box-shadow var(--dur-fast),transform var(--dur-fast)}
+.btn:hover:not(:disabled){border-color:var(--accent);background:var(--hover)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.btn.primary:hover:not(:disabled){background:var(--accent-deep);border-color:var(--accent-deep)}
+.btn.stop{border-color:var(--red);color:var(--red);background:var(--surface)}
+.btn.stop:hover:not(:disabled){background:var(--red-soft)}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ghost:hover:not(:disabled){background:var(--hover);border-color:var(--line2)}
+.btn.sm{padding:4px 10px;font-size:var(--fs-sm)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.card{background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-sm)}
+.card h3{margin:0 0 2px;font:600 var(--fs-md)/1.4 var(--serif);color:var(--ink)}
+.card .desc{margin:0 0 var(--sp-4);color:var(--ink3);font-size:var(--fs-sm);line-height:1.6}
+
+.view{max-width:1180px}
+
+/* 语义色文字 */
+.t-accent{color:var(--accent-deep)} .t-red{color:var(--red)}
+.t-green{color:var(--green)} .t-mute{color:var(--ink3)}
+
+/* 徽标 */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;
+  border-radius:var(--r-full);font-size:var(--fs-xs);font-weight:600;
+  background:var(--sunken);color:var(--ink2);white-space:nowrap}
+.badge.accent{background:var(--accent-soft);color:var(--accent-deep)}
+.badge.green{background:var(--green-soft);color:var(--green)}
+.badge.red{background:var(--red-soft);color:var(--red)}
+.badge.blue{background:var(--blue-soft);color:var(--blue)}
+
+@media(prefers-reduced-motion:reduce){
+  *{animation:none!important;transition-duration:.01ms!important}
+}
